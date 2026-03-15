@@ -36,3 +36,20 @@ print(metrics)
 - `src/adaptive_trading_ai/backtest.py` — walk-forward simulation and metrics.
 - `src/adaptive_trading_ai/viz.py` — research plots.
 - `src/adaptive_trading_ai/framework.py` — end-to-end orchestration.
+
+
+## Master UI (Flask)
+Run a browser dashboard that can launch AI runs and track saved bot performance:
+
+```bash
+python -m adaptive_trading_ai.ui
+```
+
+Then open `http://localhost:5000`.
+
+Features:
+- Launch new AI bot runs from the UI.
+- Configure synthetic market length and backtest train/test window sizes.
+- Persist and view saved bots with Sharpe ratio, cumulative return, win rate, drawdown, turnover, and meta-update count.
+
+Saved runs are stored in `saved_bots.json` in the project root by default.
