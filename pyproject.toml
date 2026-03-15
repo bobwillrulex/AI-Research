@@ -20,6 +20,7 @@ dependencies = [
   "hmmlearn",
   "xgboost",
   "lightgbm",
+  "flask",
 ]
 
 [tool.setuptools.packages.find]
