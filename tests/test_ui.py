@@ -1,4 +1,7 @@
+import json
+
 import pytest
+
 flask = pytest.importorskip("flask")
 
 import pandas as pd
@@ -25,11 +28,16 @@ class DummyFramework:
             "turnover": 0.14,
             "meta_updates": 3,
         }
-        return pd.DataFrame(), metrics, {}
+        bt = pd.DataFrame({"equity": [1.0, 1.03]})
+        return bt, metrics, {"note": "dummy"}
 
 
-def test_dashboard_and_run(tmp_path):
-    app = create_app(registry_path=tmp_path / "bots.json", framework_factory=DummyFramework)
+def test_dashboard_run_leaderboard_and_detail(tmp_path):
+    app = create_app(
+        registry_path=tmp_path / "bots.json",
+        artifacts_dir=tmp_path / "artifacts",
+        framework_factory=DummyFramework,
+    )
     client = app.test_client()
 
     resp = client.get("/")
@@ -38,10 +46,26 @@ def test_dashboard_and_run(tmp_path):
 
     run_resp = client.post(
         "/run",
-        data={"name": "Alpha", "periods": "420", "train_size": "200", "test_size": "40"},
+        data={
+            "name": "Alpha",
+            "symbols": "AAPL,MSFT",
+            "data_source": "synthetic",
+            "periods": "420",
+            "train_size": "200",
+            "test_size": "40",
+        },
         follow_redirects=True,
     )
     assert run_resp.status_code == 200
-    assert b"Ran Alpha successfully" in run_resp.data
-    assert b"Alpha" in run_resp.data
-    assert b"1.250" in run_resp.data
+    assert b"Ran 2 bot(s) successfully" in run_resp.data
+    assert b"Alpha-AAPL" in run_resp.data
+    assert b"Alpha-MSFT" in run_resp.data
+
+    registry_items = json.loads((tmp_path / "bots.json").read_text())
+    assert len(registry_items) == 2
+    detail_run_id = registry_items[0]["run_id"]
+
+    detail_resp = client.get(f"/bots/{detail_run_id}")
+    assert detail_resp.status_code == 200
+    assert b"Persisted Artifact" in detail_resp.data
+    assert b"dummy" in detail_resp.data
