@@ -48,8 +48,9 @@ python -m adaptive_trading_ai.ui
 Then open `http://localhost:5000`.
 
 Features:
-- Launch new AI bot runs from the UI.
-- Configure synthetic market length and backtest train/test window sizes.
-- Persist and view saved bots with Sharpe ratio, cumulative return, win rate, drawdown, turnover, and meta-update count.
+- Explicit ticker selection (comma-separated symbols) with one bot run per symbol/configuration.
+- Real data ingestion from CSV files/folders and optional Yahoo Finance (`yfinance`) in addition to synthetic data.
+- Persisted per-bot artifacts saved as JSON payloads for each run.
+- Leaderboard view sorted by Sharpe ratio with per-bot detail pages.
 
-Saved runs are stored in `saved_bots.json` in the project root by default.
+Saved leaderboard rows are stored in `saved_bots.json` and run artifacts in `saved_bot_artifacts/` by default.
