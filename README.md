@@ -42,8 +42,10 @@ print(metrics)
 Run a browser dashboard that can launch AI runs and track saved bot performance:
 
 ```bash
-python -m adaptive_trading_ai.ui
+py main.py
 ```
+
+(Equivalent: `python -m adaptive_trading_ai.ui`.)
 
 Then open `http://localhost:5000`.
 
