@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bot Detail</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; background: #0f172a; color: #e2e8f0; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    pre { background: #020617; padding: 1rem; border-radius: 8px; overflow-x: auto; }
+    a { color: #93c5fd; }
+    .grid { display: grid; gap: 1rem; grid-template-columns: repeat(4, minmax(120px,1fr)); }
+  </style>
+</head>
+<body>
+  <p><a href="{{ url_for('dashboard') }}">← Back to leaderboard</a></p>
+  <section class="card">
+    <h1>{{ record.name }} ({{ record.symbol }})</h1>
+    <div class="grid">
+      <div><strong>Sharpe</strong><br>{{ '%.3f'|format(record.sharpe_ratio) }}</div>
+      <div><strong>Return</strong><br>{{ '%.3f'|format(record.cumulative_return) }}</div>
+      <div><strong>Max DD</strong><br>{{ '%.3f'|format(record.max_drawdown) }}</div>
+      <div><strong>Win Rate</strong><br>{{ '%.3f'|format(record.win_rate) }}</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Run Diagnostics</h2>
+    <ul>
+      <li>Backtest rows: {{ diagnostics.backtest_rows }}</li>
+      <li>Artifact keys: {{ diagnostics.artifact_keys }}</li>
+      <li>Train size: {{ diagnostics.train_size }}</li>
+      <li>Test size: {{ diagnostics.test_size }}</li>
+      <li>Repro hash: {{ artifact.get('repro_hash', 'n/a') }}</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>Backtest Preview</h2>
+    <pre>{{ artifact.get('backtest_preview', [])|tojson(indent=2) }}</pre>
+  </section>
+
+  <section class="card">
+    <h2>Framework Artifacts / Decision Log</h2>
+    <pre>{{ artifact.get('framework_artifacts', {})|tojson(indent=2) }}</pre>
+  </section>
+
+  <section class="card">
+    <h2>Config Snapshot</h2>
+    <pre>{{ artifact.get('config', {})|tojson(indent=2) }}</pre>
+  </section>
+</body>
+</html>

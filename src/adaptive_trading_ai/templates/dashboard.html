@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Adaptive Trading AI Master UI</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; background: #0f172a; color: #e2e8f0; }
+    h1, h2 { color: #f8fafc; }
+    a { color: #93c5fd; }
+    .grid { display: grid; gap: 1rem; grid-template-columns: 1fr 2fr; align-items: start; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 8px; padding: 1rem; }
+    label { display: block; margin: 0.6rem 0 0.2rem; }
+    input, select { width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid #334155; background: #020617; color: #e2e8f0; }
+    button { margin-top: 1rem; padding: 0.65rem 1rem; border: none; background: #2563eb; color: white; border-radius: 5px; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; border-bottom: 1px solid #1f2937; padding: 0.5rem; }
+    .flash { margin-bottom: 1rem; padding: 0.7rem; background: #064e3b; border: 1px solid #065f46; border-radius: 4px; }
+    .error { margin-bottom: 0.5rem; padding: 0.6rem; background: #7f1d1d; border: 1px solid #991b1b; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Adaptive Trading AI Multi-Bot Master UI</h1>
+  {% if message %}<div class="flash">{{ message }}</div>{% endif %}
+  {% for error in errors %}<div class="error">{{ error }}</div>{% endfor %}
+  <div class="grid">
+    <section class="card">
+      <h2>Run Bots</h2>
+      <form method="post" action="{{ url_for('run_bot') }}">
+        <label>Name</label><input name="name" value="{{ form_data.get('family_name','') }}" required />
+        <label>Tickers (comma separated)</label><input name="symbols" value="{{ form_data.get('symbols',[])|join(',') }}" required />
+        <label>Data source</label>
+        <select name="data_source">
+          {% set src=form_data.get('data_source','synthetic') %}
+          <option value="synthetic" {% if src=='synthetic' %}selected{% endif %}>Synthetic</option>
+          <option value="csv" {% if src=='csv' %}selected{% endif %}>CSV</option>
+          <option value="yfinance" {% if src=='yfinance' %}selected{% endif %}>Yahoo Finance</option>
+        </select>
+        <label>CSV path</label><input name="data_path" value="{{ form_data.get('data_path','') }}" />
+        <label>Missing-value policy</label>
+        <select name="missing_policy">
+          {% set policy=form_data.get('missing_policy','drop') %}
+          <option value="drop" {% if policy=='drop' %}selected{% endif %}>Drop rows</option>
+          <option value="ffill" {% if policy=='ffill' %}selected{% endif %}>Forward-fill then back-fill</option>
+        </select>
+        <label>Periods</label><input name="periods" type="number" value="{{ form_data.get('periods',420) }}" required />
+        <label>Train size</label><input name="train_size" type="number" value="{{ form_data.get('train_size',260) }}" required />
+        <label>Test size</label><input name="test_size" type="number" value="{{ form_data.get('test_size',40) }}" required />
+        <button type="submit">Run One Bot Per Symbol</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Leaderboard</h2>
+      <form method="get">
+        <input name="symbol" placeholder="Filter symbol" value="{{ symbol_filter }}" />
+        <input name="source" placeholder="Filter source" value="{{ source_filter }}" />
+        <button type="submit">Apply Filters</button>
+      </form>
+      {% if records %}
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th><th>Symbol</th><th>Source</th><th><a href="?sort=sharpe_ratio&dir={{ 'asc' if sort_dir=='desc' else 'desc' }}">Sharpe</a></th><th><a href="?sort=cumulative_return&dir={{ 'asc' if sort_dir=='desc' else 'desc' }}">Return</a></th><th><a href="?sort=max_drawdown&dir={{ 'asc' if sort_dir=='desc' else 'desc' }}">Max DD</a></th><th><a href="?sort=win_rate&dir={{ 'asc' if sort_dir=='desc' else 'desc' }}">Win Rate</a></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in records %}
+          <tr>
+            <td><a href="{{ url_for('bot_detail', run_id=item.run_id) }}">{{ item.name }}</a></td>
+            <td>{{ item.symbol }}</td>
+            <td>{{ item.data_source }}</td>
+            <td>{{ '%.3f'|format(item.sharpe_ratio) }}</td>
+            <td>{{ '%.3f'|format(item.cumulative_return) }}</td>
+            <td>{{ '%.3f'|format(item.max_drawdown) }}</td>
+            <td>{{ '%.3f'|format(item.win_rate) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p>Page {{ page }} / {{ total_pages }}</p>
+      {% else %}<p>No bots saved yet.</p>{% endif %}
+
+      {% if compare_items %}
+      <h3>Quick Compare</h3>
+      <ul>
+      {% for item in compare_items %}
+        <li>{{ item.name }} — Sharpe {{ '%.2f'|format(item.sharpe_ratio) }}, Return {{ '%.2f'|format(item.cumulative_return) }}</li>
+      {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+  </div>
+</body>
+</html>

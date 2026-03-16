@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,7 +10,7 @@ from uuid import uuid4
 
 import numpy as np
 import pandas as pd
-from flask import Flask, abort, redirect, render_template_string, request, url_for
+from flask import Flask, abort, redirect, render_template, request, url_for
 
 from .framework import AdaptiveTradingFramework, build_default_framework
 
@@ -28,6 +29,11 @@ class BotRunRecord:
     turnover: float
     meta_updates: int
     artifact_path: str
+
+
+TICKER_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,14}$")
+MAX_SYMBOLS = 25
+MIN_ROWS = 120
 
 
 class BotRegistry:
@@ -53,129 +59,6 @@ class BotRegistry:
         self.path.write_text(json.dumps([asdict(item) for item in records], indent=2))
 
 
-HTML_TEMPLATE = """
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Adaptive Trading AI Master UI</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 2rem; background: #0f172a; color: #e2e8f0; }
-    h1, h2 { color: #f8fafc; }
-    a { color: #93c5fd; }
-    .grid { display: grid; gap: 1rem; grid-template-columns: 1fr 2fr; align-items: start; }
-    .card { background: #111827; border: 1px solid #1f2937; border-radius: 8px; padding: 1rem; }
-    label { display: block; margin: 0.6rem 0 0.2rem; }
-    input, select { width: 100%; padding: 0.5rem; border-radius: 4px; border: 1px solid #334155; background: #020617; color: #e2e8f0; }
-    button { margin-top: 1rem; padding: 0.65rem 1rem; border: none; background: #2563eb; color: white; border-radius: 5px; cursor: pointer; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; border-bottom: 1px solid #1f2937; padding: 0.5rem; }
-    .flash { margin-bottom: 1rem; padding: 0.7rem; background: #064e3b; border: 1px solid #065f46; border-radius: 4px; }
-    .hint { color: #94a3b8; font-size: 0.9rem; }
-  </style>
-</head>
-<body>
-  <h1>Adaptive Trading AI Multi-Bot Master UI</h1>
-  {% if message %}
-    <div class="flash">{{ message }}</div>
-  {% endif %}
-  <div class="grid">
-    <section class="card">
-      <h2>Run Bots</h2>
-      <form method="post" action="{{ url_for('run_bot') }}">
-        <label for="name">Bot family name</label>
-        <input id="name" name="name" placeholder="MomentumLab" required />
-
-        <label for="symbols">Ticker selection (comma separated)</label>
-        <input id="symbols" name="symbols" placeholder="AAPL,MSFT,BTC-USD" required />
-
-        <label for="data_source">Data source</label>
-        <select id="data_source" name="data_source">
-          <option value="synthetic" selected>Synthetic</option>
-          <option value="csv">CSV path (single file or folder)</option>
-          <option value="yfinance">Yahoo Finance (requires yfinance)</option>
-        </select>
-
-        <label for="data_path">CSV path (optional)</label>
-        <input id="data_path" name="data_path" placeholder="./data or ./data/AAPL.csv" />
-
-        <label for="periods">Synthetic market periods</label>
-        <input id="periods" name="periods" type="number" min="320" value="420" required />
-
-        <label for="train_size">Train window</label>
-        <input id="train_size" name="train_size" type="number" min="120" value="260" required />
-
-        <label for="test_size">Test window</label>
-        <input id="test_size" name="test_size" type="number" min="20" value="40" required />
-
-        <button type="submit">Run One Bot Per Symbol</button>
-      </form>
-      <p class="hint">Each selected symbol is executed as an independent bot with persisted artifacts.</p>
-    </section>
-
-    <section class="card">
-      <h2>Leaderboard</h2>
-      {% if records %}
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th><th>Symbol</th><th>Source</th><th>Created</th><th>Sharpe</th><th>Cumulative Return</th><th>Win Rate</th><th>Max DD</th><th>Turnover</th><th>Meta Updates</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for item in records %}
-          <tr>
-            <td><a href="{{ url_for('bot_detail', run_id=item.run_id) }}">{{ item.name }}</a></td>
-            <td>{{ item.symbol }}</td>
-            <td>{{ item.data_source }}</td>
-            <td>{{ item.created_at }}</td>
-            <td>{{ '%.3f'|format(item.sharpe_ratio) }}</td>
-            <td>{{ '%.3f'|format(item.cumulative_return) }}</td>
-            <td>{{ '%.3f'|format(item.win_rate) }}</td>
-            <td>{{ '%.3f'|format(item.max_drawdown) }}</td>
-            <td>{{ '%.3f'|format(item.turnover) }}</td>
-            <td>{{ item.meta_updates }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-        <p>No bots saved yet. Run one from the panel.</p>
-      {% endif %}
-    </section>
-  </div>
-</body>
-</html>
-"""
-
-DETAIL_TEMPLATE = """
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Bot Detail</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 2rem; background: #0f172a; color: #e2e8f0; }
-    .card { background: #111827; border: 1px solid #1f2937; border-radius: 8px; padding: 1rem; max-width: 1000px; }
-    a { color: #93c5fd; }
-    pre { background: #020617; padding: 1rem; border-radius: 8px; overflow-x: auto; }
-  </style>
-</head>
-<body>
-  <p><a href="{{ url_for('dashboard') }}">← Back to leaderboard</a></p>
-  <section class="card">
-    <h1>{{ record.name }} ({{ record.symbol }})</h1>
-    <p>Source: {{ record.data_source }} | Created: {{ record.created_at }}</p>
-    <p>Sharpe: {{ '%.3f'|format(record.sharpe_ratio) }} | Return: {{ '%.3f'|format(record.cumulative_return) }} | Win rate: {{ '%.3f'|format(record.win_rate) }}</p>
-    <p>Max DD: {{ '%.3f'|format(record.max_drawdown) }} | Turnover: {{ '%.3f'|format(record.turnover) }} | Meta updates: {{ record.meta_updates }}</p>
-    <h2>Persisted Artifact</h2>
-    <pre>{{ artifact_json }}</pre>
-  </section>
-</body>
-</html>
-"""
-
-
 def _synthetic_ohlcv(periods: int, seed: int = 42) -> pd.DataFrame:
     idx = pd.date_range("2021-01-01", periods=periods, freq="D")
     t = np.arange(periods)
@@ -195,6 +78,38 @@ def _synthetic_ohlcv(periods: int, seed: int = 42) -> pd.DataFrame:
     )
 
 
+def _normalize_ohlcv(df: pd.DataFrame, symbol: str, missing_policy: str = "drop") -> pd.DataFrame:
+    aliases = {
+        "open": {"open", "o"},
+        "high": {"high", "h"},
+        "low": {"low", "l"},
+        "close": {"close", "adj close", "adj_close", "adjusted_close", "c"},
+        "volume": {"volume", "vol", "v"},
+    }
+    lower_cols = {str(c).strip().lower(): c for c in df.columns}
+    rename: dict[str, str] = {}
+    for canon, opts in aliases.items():
+        for opt in opts:
+            if opt in lower_cols:
+                rename[lower_cols[opt]] = canon
+                break
+
+    frame = df.rename(columns=rename)
+    required = ["open", "high", "low", "close", "volume"]
+    missing = [col for col in required if col not in frame.columns]
+    if missing:
+        raise ValueError(f"Missing required OHLCV column(s) for {symbol}: {', '.join(missing)}")
+
+    frame = frame[required].copy()
+    frame.index = pd.to_datetime(frame.index, utc=True)
+    frame = frame[~frame.index.duplicated(keep="last")].sort_index()
+    frame = frame.ffill().bfill() if missing_policy == "ffill" else frame.dropna()
+
+    if len(frame) < MIN_ROWS:
+        raise ValueError(f"Insufficient rows for {symbol}. Need at least {MIN_ROWS}, got {len(frame)}")
+    return frame
+
+
 def _load_csv_ohlcv(symbol: str, data_path: str | None) -> pd.DataFrame:
     if not data_path:
         raise ValueError("CSV path is required for csv data source")
@@ -212,10 +127,8 @@ def _load_csv_ohlcv(symbol: str, data_path: str | None) -> pd.DataFrame:
         dt_col = lower_cols["timestamp"]
     else:
         dt_col = df.columns[0]
-    df[dt_col] = pd.to_datetime(df[dt_col])
-    df = df.set_index(dt_col)
-    df.columns = [c.lower() for c in df.columns]
-    return df[["open", "high", "low", "close", "volume"]].dropna()
+    df[dt_col] = pd.to_datetime(df[dt_col], utc=True)
+    return df.set_index(dt_col)
 
 
 def _load_yfinance_ohlcv(symbol: str, periods: int) -> pd.DataFrame:
@@ -227,19 +140,24 @@ def _load_yfinance_ohlcv(symbol: str, periods: int) -> pd.DataFrame:
     raw = yf.download(symbol, period=f"{period_window}d", interval="1d", progress=False)
     if raw.empty:
         raise ValueError(f"No yfinance data for {symbol}")
+    if isinstance(raw.columns, pd.MultiIndex):
+        raw.columns = raw.columns.get_level_values(0)
     raw.columns = [str(c).lower() for c in raw.columns]
-    return raw[["open", "high", "low", "close", "volume"]].dropna().tail(periods)
+    raw.index = pd.to_datetime(raw.index, utc=True)
+    return raw.tail(periods)
 
 
-def _resolve_ohlcv(symbol: str, data_source: str, periods: int, data_path: str | None) -> pd.DataFrame:
+def _resolve_ohlcv(symbol: str, data_source: str, periods: int, data_path: str | None, missing_policy: str) -> pd.DataFrame:
     if data_source == "synthetic":
         seed = abs(hash(symbol)) % 10_000
-        return _synthetic_ohlcv(periods=periods, seed=seed)
-    if data_source == "csv":
-        return _load_csv_ohlcv(symbol=symbol, data_path=data_path)
-    if data_source == "yfinance":
-        return _load_yfinance_ohlcv(symbol=symbol, periods=periods)
-    raise ValueError(f"Unsupported data source: {data_source}")
+        raw = _synthetic_ohlcv(periods=periods, seed=seed)
+    elif data_source == "csv":
+        raw = _load_csv_ohlcv(symbol=symbol, data_path=data_path)
+    elif data_source == "yfinance":
+        raw = _load_yfinance_ohlcv(symbol=symbol, periods=periods)
+    else:
+        raise ValueError(f"Unsupported data source: {data_source}")
+    return _normalize_ohlcv(raw, symbol=symbol, missing_policy=missing_policy)
 
 
 def _persist_artifact(artifacts_dir: Path, run_id: str, payload: dict) -> Path:
@@ -247,6 +165,65 @@ def _persist_artifact(artifacts_dir: Path, run_id: str, payload: dict) -> Path:
     artifact_path = artifacts_dir / f"{run_id}.json"
     artifact_path.write_text(json.dumps(payload, indent=2, default=str))
     return artifact_path
+
+
+def _parse_form(request_form) -> tuple[dict, list[str]]:
+    errors: list[str] = []
+
+    def parse_int(field: str, default: int) -> int:
+        raw = request_form.get(field, str(default)).strip()
+        try:
+            return int(raw)
+        except ValueError:
+            errors.append(f"{field.replace('_', ' ').title()} must be an integer.")
+            return default
+
+    symbols = [s.strip().upper() for s in request_form.get("symbols", "").split(",") if s.strip()]
+    symbols = list(dict.fromkeys(symbols))
+
+    payload = {
+        "family_name": request_form.get("name", "Unnamed Bot").strip() or "Unnamed Bot",
+        "data_source": request_form.get("data_source", "synthetic").strip().lower(),
+        "symbols": symbols,
+        "data_path": request_form.get("data_path", "").strip() or None,
+        "periods": parse_int("periods", 420),
+        "train_size": parse_int("train_size", 260),
+        "test_size": parse_int("test_size", 40),
+        "missing_policy": request_form.get("missing_policy", "drop").strip().lower() or "drop",
+    }
+
+    if not symbols:
+        errors.append("Provide at least one symbol.")
+    if len(symbols) > MAX_SYMBOLS:
+        errors.append(f"Maximum symbol count is {MAX_SYMBOLS}; got {len(symbols)}.")
+
+    bad_symbols = [symbol for symbol in symbols if not TICKER_PATTERN.match(symbol)]
+    if bad_symbols:
+        errors.append(f"Invalid ticker format: {', '.join(bad_symbols)}")
+
+    if payload["periods"] < MIN_ROWS:
+        errors.append(f"Periods must be >= {MIN_ROWS}.")
+    if payload["train_size"] <= 0 or payload["test_size"] <= 0:
+        errors.append("Train/test size must be positive.")
+    if payload["test_size"] >= payload["periods"]:
+        errors.append("Test size must be less than periods.")
+    if payload["train_size"] + payload["test_size"] > payload["periods"]:
+        errors.append("Train size + test size must be <= periods.")
+
+    if payload["data_source"] == "csv":
+        if not payload["data_path"]:
+            errors.append("CSV data source requires a file or directory path.")
+        else:
+            base = Path(payload["data_path"])
+            if not base.exists():
+                errors.append(f"CSV path does not exist: {base}")
+            elif base.is_file() and base.suffix.lower() != ".csv":
+                errors.append("CSV path file must end with .csv")
+
+    if payload["missing_policy"] not in {"drop", "ffill"}:
+        errors.append("Missing-value policy must be one of: drop, ffill")
+
+    return payload, errors
 
 
 def create_app(
@@ -258,11 +235,51 @@ def create_app(
     registry = BotRegistry(registry_path)
     artifacts_dir = Path(artifacts_dir)
 
+    def _dashboard_payload(form_data: dict | None = None, errors: list[str] | None = None) -> dict:
+        records = registry.load()
+        sort_key = request.args.get("sort", "sharpe_ratio")
+        sort_dir = request.args.get("dir", "desc")
+        descending = sort_dir != "asc"
+
+        symbol_filter = request.args.get("symbol", "").strip().upper()
+        source_filter = request.args.get("source", "").strip().lower()
+
+        if symbol_filter:
+            records = [r for r in records if r.symbol == symbol_filter]
+        if source_filter:
+            records = [r for r in records if r.data_source == source_filter]
+
+        valid_sort = {"sharpe_ratio", "cumulative_return", "max_drawdown", "win_rate", "created_at"}
+        if sort_key not in valid_sort:
+            sort_key = "sharpe_ratio"
+        records = sorted(records, key=lambda rec: getattr(rec, sort_key), reverse=descending)
+
+        page = max(int(request.args.get("page", "1")), 1)
+        per_page = 10
+        total_pages = max((len(records) - 1) // per_page + 1, 1)
+        page = min(page, total_pages)
+        page_records = records[(page - 1) * per_page : page * per_page]
+
+        compare_ids = request.args.getlist("compare")
+        compare_items = [r for r in records if r.run_id in compare_ids][:4]
+
+        return {
+            "records": page_records,
+            "message": request.args.get("message", ""),
+            "errors": errors or [],
+            "form_data": form_data or {},
+            "page": page,
+            "total_pages": total_pages,
+            "sort_key": sort_key,
+            "sort_dir": sort_dir,
+            "symbol_filter": symbol_filter,
+            "source_filter": source_filter,
+            "compare_items": compare_items,
+        }
+
     @app.get("/")
     def dashboard() -> str:
-        records = sorted(registry.load(), key=lambda x: x.sharpe_ratio, reverse=True)
-        message = request.args.get("message", "")
-        return render_template_string(HTML_TEMPLATE, records=records, message=message)
+        return render_template("dashboard.html", **_dashboard_payload())
 
     @app.get("/bots/<run_id>")
     def bot_detail(run_id: str) -> str:
@@ -270,62 +287,90 @@ def create_app(
         if record is None:
             abort(404)
         artifact_path = Path(record.artifact_path)
-        artifact_json = artifact_path.read_text() if artifact_path.exists() else '{"error": "artifact missing"}'
-        return render_template_string(DETAIL_TEMPLATE, record=record, artifact_json=artifact_json)
+        artifact = json.loads(artifact_path.read_text()) if artifact_path.exists() else {"error": "artifact missing"}
+        diagnostics = {
+            "backtest_rows": len(artifact.get("backtest_preview", [])),
+            "artifact_keys": len(artifact.get("framework_artifacts", {})),
+            "train_size": artifact.get("config", {}).get("train_size"),
+            "test_size": artifact.get("config", {}).get("test_size"),
+        }
+        return render_template("bot_detail.html", record=record, artifact=artifact, diagnostics=diagnostics)
 
     @app.post("/run")
     def run_bot():
-        family_name = request.form.get("name", "Unnamed Bot").strip()
-        data_source = request.form.get("data_source", "synthetic").strip().lower()
-        symbols = [s.strip().upper() for s in request.form.get("symbols", "").split(",") if s.strip()]
-        data_path = request.form.get("data_path", "").strip() or None
-        periods = int(request.form.get("periods", "420"))
-        train_size = int(request.form.get("train_size", "260"))
-        test_size = int(request.form.get("test_size", "40"))
-
-        if not symbols:
-            return redirect(url_for("dashboard", message="No symbols supplied."))
+        params, errors = _parse_form(request.form)
+        if errors:
+            return render_template("dashboard.html", **_dashboard_payload(form_data=params, errors=errors)), 400
 
         saved = 0
-        for symbol in symbols:
-            framework = framework_factory()
-            framework.backtester.train_size = train_size
-            framework.backtester.test_size = test_size
-
-            frame = _resolve_ohlcv(symbol=symbol, data_source=data_source, periods=periods, data_path=data_path)
-            bt_df, metrics, artifacts = framework.run(frame)
-
+        failures: list[str] = []
+        for symbol in params["symbols"]:
             run_id = uuid4().hex
-            payload = {
-                "run_id": run_id,
-                "name": f"{family_name}-{symbol}",
-                "symbol": symbol,
-                "data_source": data_source,
-                "metrics": metrics,
-                "framework_artifacts": artifacts,
-                "backtest_preview": bt_df.tail(20).to_dict(orient="records") if hasattr(bt_df, "tail") else [],
-                "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            }
-            artifact_path = _persist_artifact(artifacts_dir=artifacts_dir, run_id=run_id, payload=payload)
-            registry.add(
-                BotRunRecord(
-                    run_id=run_id,
-                    name=f"{family_name}-{symbol}",
-                    symbol=symbol,
-                    data_source=data_source,
-                    created_at=payload["created_at"],
-                    sharpe_ratio=float(metrics.get("sharpe_ratio", 0.0)),
-                    cumulative_return=float(metrics.get("cumulative_return", 0.0)),
-                    win_rate=float(metrics.get("win_rate", 0.0)),
-                    max_drawdown=float(metrics.get("max_drawdown", 0.0)),
-                    turnover=float(metrics.get("turnover", 0.0)),
-                    meta_updates=int(metrics.get("meta_updates", 0)),
-                    artifact_path=str(artifact_path),
-                )
-            )
-            saved += 1
+            try:
+                framework = framework_factory()
+                framework.backtester.train_size = params["train_size"]
+                framework.backtester.test_size = params["test_size"]
 
-        return redirect(url_for("dashboard", message=f"Ran {saved} bot(s) successfully."))
+                frame = _resolve_ohlcv(
+                    symbol=symbol,
+                    data_source=params["data_source"],
+                    periods=params["periods"],
+                    data_path=params["data_path"],
+                    missing_policy=params["missing_policy"],
+                )
+                bt_df, metrics, artifacts = framework.run(frame)
+                payload = {
+                    "run_id": run_id,
+                    "name": f"{params['family_name']}-{symbol}",
+                    "symbol": symbol,
+                    "data_source": params["data_source"],
+                    "status": "succeeded",
+                    "metrics": metrics,
+                    "framework_artifacts": artifacts,
+                    "backtest_preview": bt_df.tail(50).to_dict(orient="records") if hasattr(bt_df, "tail") else [],
+                    "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    "config": params,
+                    "repro_hash": uuid4().hex,
+                }
+                artifact_path = _persist_artifact(artifacts_dir=artifacts_dir, run_id=run_id, payload=payload)
+                registry.add(
+                    BotRunRecord(
+                        run_id=run_id,
+                        name=f"{params['family_name']}-{symbol}",
+                        symbol=symbol,
+                        data_source=params["data_source"],
+                        created_at=payload["created_at"],
+                        sharpe_ratio=float(metrics.get("sharpe_ratio", 0.0)),
+                        cumulative_return=float(metrics.get("cumulative_return", 0.0)),
+                        win_rate=float(metrics.get("win_rate", 0.0)),
+                        max_drawdown=float(metrics.get("max_drawdown", 0.0)),
+                        turnover=float(metrics.get("turnover", 0.0)),
+                        meta_updates=int(metrics.get("meta_updates", 0)),
+                        artifact_path=str(artifact_path),
+                    )
+                )
+                saved += 1
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"{symbol}: {exc}")
+                _persist_artifact(
+                    artifacts_dir=artifacts_dir,
+                    run_id=run_id,
+                    payload={
+                        "run_id": run_id,
+                        "name": f"{params['family_name']}-{symbol}",
+                        "symbol": symbol,
+                        "data_source": params["data_source"],
+                        "status": "failed",
+                        "error": str(exc),
+                        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        "config": params,
+                    },
+                )
+
+        message = f"Ran {saved}/{len(params['symbols'])} bot(s) successfully."
+        if failures:
+            message += " Failures: " + " | ".join(failures)
+        return redirect(url_for("dashboard", message=message))
 
     return app
 
